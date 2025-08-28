@@ -1,0 +1,88 @@
+name: Build sing-box-for-ios
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write  # 重要：允许创建 release
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@main
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.25
+
+      - name: Setup Xcode stable
+        run: |-
+          sudo xcode-select -s /Applications/Xcode_16.4.app
+
+
+      - name: Install ldid (via brew)
+        run: |
+          brew install ldid
+
+      - name: Build TIPA
+        run: |
+          INIT_DIR=$(pwd)
+          git clone -b main --depth 1 https://github.com/SagerNet/sing-box.git
+          cd sing-box/clients
+          git clone -b main --depth 1 https://github.com/SagerNet/sing-box-for-apple.git ./apple
+
+          cd $INIT_DIR/sing-box
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target apple -platform ios
+          mv Libbox.xcframework clients/apple
+
+          export XCODEPROJ_NAME=sing-box
+          export APPLICATION_NAME=sing-box
+          export SCHEME_NAME=SFI
+
+          cd clients/apple
+
+          xcodebuild \
+            -project $XCODEPROJ_NAME.xcodeproj \
+            -scheme $SCHEME_NAME \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            -sdk iphoneos \
+            build install \
+            STRIP_INSTALLED_PRODUCT=NO \
+            ARCHS=arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
+            ENABLE_BITCODE=NO \
+            DSTROOT=packages/
+
+          ldid -SSFI/SFI.entitlements packages/Applications/$APPLICATION_NAME.app/$APPLICATION_NAME
+          ldid -SExtension/Extension.entitlements packages/Applications/$APPLICATION_NAME.app/PlugIns/Extension.appex/Extension
+          ldid -SIntentsExtension/IntentsExtension.entitlements packages/Applications/$APPLICATION_NAME.app/Extensions/IntentsExtension.appex/IntentsExtension
+
+          mkdir -p packages/Payload
+          cp -rp packages/Applications/$APPLICATION_NAME.app packages/Payload
+          cd packages
+          zip -qr $APPLICATION_NAME.tipa Payload
+
+          # Move to root for upload
+          mv $APPLICATION_NAME.tipa $INIT_DIR/${APPLICATION_NAME}-${{ inputs.tag_name }}.tipa
+
+      - name: Create Release and Upload TIPA
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          name: Release ${{ inputs.tag_name }}
+          files: sing-box-${{ inputs.tag_name }}.tipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
