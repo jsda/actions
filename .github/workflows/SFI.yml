@@ -1,53 +1,63 @@
-name: Build sing-box-for-ios
+name: Build SFI
 
 on:
   workflow_dispatch:
-    inputs:
-      tag_name:
-        description: '输入版本号 (例：1.12.0)'
-        required: true
-        type: string
-      prerelease:
-        description: '是否发布为测试版? (true/false)'
-        required: false
-        default: 'false'  # 默认为 false
-        type: choice
-        options:
-          - 'true'
-          - 'false'
+  schedule:
+    - cron: '* 15 * * *'
 
 permissions:
   contents: write  # 重要：允许创建 release
+  actions: write
 
 jobs:
   build:
     runs-on: macos-latest
 
     steps:
+      - name: set version
+        run: |
+          echo "SING_VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | perl -ne 'if(/"tag_name":\s*"v([0-9a-zA-Z\.-]+)"/){ print "$1\n"; last }')" >> $GITHUB_ENV
+          echo "SING_IOS_VERSION=$(curl -s https://api.github.com/repos/${{ github.actor }}/${{ github.repository }}/releases/latest | perl -ne 'if(/"tag_name":\s*"v([0-9a-zA-Z\.-]+)"/){ print "$1\n"; last }')" >> $GITHUB_ENV
+        shell: bash
+
+      - name: set variables
+        id: set_variables
+        run: |
+          echo "sing-box-v${SING_VERSION}" >> $GITHUB_STEP_SUMMARY
+          if [ "${SING_VERSION}" == "${SING_IOS_VERSION}" ]; then
+            echo "SING_VERSION_MATCH=true" >> $GITHUB_ENV
+          else
+            echo "SING_VERSION_MATCH=false" >> $GITHUB_ENV
+          fi
+
       - name: Checkout this repo
+        if: ${{ env.SING_VERSION_MATCH != 'true' }}
         uses: actions/checkout@main
 
       - name: Setup Go
+        if: ${{ env.SING_VERSION_MATCH != 'true' }}
         uses: actions/setup-go@v5
         with:
           go-version: ^1.25
 
       - name: Setup Xcode stable
+        if: ${{ env.SING_VERSION_MATCH != 'true' }}
         run: |-
           sudo xcode-select -s /Applications/Xcode.app
 
 
       - name: Install ldid (via brew)
+        if: ${{ env.SING_VERSION_MATCH != 'true' }}
         run: |
           brew install ldid
 
       - name: Build TIPA
+        if: ${{ env.SING_VERSION_MATCH != 'true' }}
         run: |
           mkdir -p $HOME/data
           cd $HOME/data
 
-          echo "sing-box-v${{ inputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
-          git clone -b v${{ inputs.tag_name }} --recurse-submodules --depth 1 https://github.com/SagerNet/sing-box.git
+          git clone -b v${SING_VERSION} --recurse-submodules --depth 1 https://github.com/SagerNet/sing-box.git
 
           cd $HOME/data/sing-box
           make lib_install
@@ -83,15 +93,21 @@ jobs:
           cp -rp packages/Applications/$APPLICATION_NAME.app packages/Payload
           cd packages
           zip -qr $APPLICATION_NAME.tipa Payload
-          mv $APPLICATION_NAME.tipa $HOME/data/${APPLICATION_NAME}-${{ inputs.tag_name }}.tipa
-          echo -e "SHA256 Checksum: \n$(sha256sum $HOME/data/${APPLICATION_NAME}-${{ inputs.tag_name }}.tipa)" >> $GITHUB_STEP_SUMMARY
+          mv $APPLICATION_NAME.tipa $HOME/data/${APPLICATION_NAME}-${SING_VERSION}.tipa
+          echo -e "SHA256 Checksum: \n$(sha256sum $HOME/data/${APPLICATION_NAME}-${SING_VERSION}.tipa)" >> $GITHUB_STEP_SUMMARY
 
       - name: Create Release and Upload TIPA
+        if: ${{ env.SING_VERSION_MATCH != 'true' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ inputs.tag_name }}
-          name: ${{ inputs.tag_name }}
-          prerelease: ${{ inputs.prerelease == 'true' }}
-          files: $HOME/data/sing-box-${{ inputs.tag_name }}.tipa
+          tag_name: v${SING_VERSION}
+          name: ${SING_VERSION}
+          files: $HOME/data/sing-box-${SING_VERSION}.tipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete Old Workflows
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+          retain_days: 3
+          keep_minimum_runs: 3
