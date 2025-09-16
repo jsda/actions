@@ -43,13 +43,13 @@ jobs:
 
       - name: Build TIPA
         run: |
-          mkdir -p $HOME/data
-          cd $HOME/data
+          mkdir -p ${{ runner.home }}/data
+          cd ${{ runner.home }}/data
 
           echo "sing-box-v${{ inputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
           git clone -b v${{ inputs.tag_name }} --recurse-submodules --depth 1 https://github.com/SagerNet/sing-box.git
 
-          cd $HOME/data/sing-box
+          cd ${{ runner.home }}/data/sing-box
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
           go run ./cmd/internal/build_libbox -target apple -platform ios
@@ -83,8 +83,8 @@ jobs:
           cp -rp packages/Applications/$APPLICATION_NAME.app packages/Payload
           cd packages
           zip -qr $APPLICATION_NAME.tipa Payload
-          mv $APPLICATION_NAME.tipa $HOME/data/${APPLICATION_NAME}-${{ inputs.tag_name }}.tipa
-          echo -e "SHA256 Checksum: \n$(sha256sum $HOME/data/${APPLICATION_NAME}-${{ inputs.tag_name }}.tipa)" >> $GITHUB_STEP_SUMMARY
+          mv $APPLICATION_NAME.tipa ${{ runner.home }}/data/${APPLICATION_NAME}-${{ inputs.tag_name }}.tipa
+          echo -e "SHA256 Checksum: \n$(sha256sum ${{ runner.home }}/data/${APPLICATION_NAME}-${{ inputs.tag_name }}.tipa)" >> $GITHUB_STEP_SUMMARY
 
       - name: Create Release and Upload TIPA
         uses: softprops/action-gh-release@v2
@@ -92,6 +92,6 @@ jobs:
           tag_name: v${{ inputs.tag_name }}
           name: ${{ inputs.tag_name }}
           prerelease: ${{ inputs.prerelease == 'true' }}
-          files: $HOME/data/sing-box-${{ inputs.tag_name }}.tipa
+          files: ${{ runner.home }}/data/sing-box-${{ inputs.tag_name }}.tipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
