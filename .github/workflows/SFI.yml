@@ -54,12 +54,12 @@ jobs:
       - name: Build TIPA
         if: ${{ env.SING_VERSION_MATCH != 'true' }}
         run: |
-          mkdir -p ${{ runner.home }}/data
-          cd ${{ runner.home }}/data
+          mkdir -p $HOME/data
+          cd $HOME/data
 
           git clone -b v${SING_VERSION} --recurse-submodules --depth 1 https://github.com/SagerNet/sing-box.git
 
-          cd ${{ runner.home }}/data/sing-box
+          cd $HOME/data/sing-box
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
           go run ./cmd/internal/build_libbox -target apple -platform ios
@@ -93,8 +93,8 @@ jobs:
           cp -rp packages/Applications/$APPLICATION_NAME.app packages/Payload
           cd packages
           zip -qr $APPLICATION_NAME.tipa Payload
-          mv $APPLICATION_NAME.tipa ${{ runner.home }}/data/${APPLICATION_NAME}-${SING_VERSION}.tipa
-          echo -e "SHA256 Checksum: \n$(sha256sum ${{ runner.home }}/data/${APPLICATION_NAME}-${SING_VERSION}.tipa)" >> $GITHUB_STEP_SUMMARY
+          mv $APPLICATION_NAME.tipa $HOME/data/${APPLICATION_NAME}-${SING_VERSION}.tipa
+          echo -e "SHA256 Checksum: \n$(sha256sum $HOME/data/${APPLICATION_NAME}-${SING_VERSION}.tipa)" >> $GITHUB_STEP_SUMMARY
 
       - name: Create Release and Upload TIPA
         if: ${{ env.SING_VERSION_MATCH != 'true' }}
